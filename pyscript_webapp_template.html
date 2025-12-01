@@ -1,0 +1,248 @@
+<!-- FILE: index.html -->
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Speech Display — PyScript + Kuromoji</title>
+  <link rel="stylesheet" href="style.css">
+
+  <!-- PyScript -->
+  <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+  <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+
+  <!-- kuromoji.js (形態素解析ライブラリ JS) -->
+  <script src="https://unpkg.com/kuromoji@0.1.2/dist/kuromoji.js"></script>
+
+</head>
+<body>
+  <!-- Wait / splash screen -->
+  <div id="wait-screen" class="screen">
+    <img id="bgimg" src="autumn_01.jpg" alt="bg">
+    <div id="mask"></div>
+  </div>
+
+  <!-- Main app -->
+  <div id="app" class="hidden">
+    <header>
+      <div id="status">Ready</div>
+      <div id="controls">
+        <select id="lang-select"></select>
+        <button id="translate-toggle">Translate to Japanese (OFF)</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="hiragana" class="bigtext">--</div>
+      <div id="translation" class="smalltext">--</div>
+    </main>
+
+    <footer>
+      <button id="start-btn">Start Listening</button>
+      <button id="stop-btn">Stop</button>
+    </footer>
+  </div>
+
+  <!-- PyScript: small module that exposes helper functions to JS -->
+  <py-script output="none">
+from js import window
+
+# katakana -> hiragana converter (python implementation)
+
+def katakana_to_hiragana(s: str) -> str:
+    out = []
+    for c in s:
+        code = ord(c)
+        if 0x30A1 <= code <= 0x30F6:
+            out.append(chr(code - 0x60))
+        else:
+            out.append(c)
+    return ''.join(out)
+
+
+def normalize_long_vowels(reading_katakana: str) -> str:
+    long_vowel_map = {
+        'ア':'ア','イ':'イ','ウ':'ウ','エ':'イ','オ':'ウ',
+        'カ':'ア','キ':'イ','ク':'ウ','ケ':'イ','コ':'ウ',
+        'サ':'ア','シ':'イ','ス':'ウ','セ':'イ','ソ':'ウ',
+        'タ':'ア','チ':'イ','ツ':'ウ','テ':'イ','ト':'ウ',
+        'ナ':'ア','ニ':'イ','ヌ':'ウ','ネ':'イ','ノ':'ウ',
+        'ハ':'ア','ヒ':'イ','フ':'ウ','ヘ':'イ','ホ':'ウ',
+        'マ':'ア','ミ':'イ','ム':'ウ','メ':'イ','モ':'ウ',
+        'ヤ':'ア','ユ':'ウ','ヨ':'ウ',
+        'ラ':'ア','リ':'イ','ル':'ウ','レ':'イ','ロ':'ウ',
+        'ワ':'ア','ヲ':'オ','ン':'ン',
+        'ガ':'ア','ギ':'イ','グ':'ウ','ゲ':'イ','ゴ':'ウ',
+        'ザ':'ア','ジ':'イ','ズ':'ウ','ゼ':'イ','ゾ':'ウ',
+        'ダ':'ア','ヂ':'イ','ヅ':'ウ','デ':'イ','ド':'ウ',
+        'バ':'ア','ビ':'イ','ブ':'ウ','ベ':'イ','ボ':'ウ',
+        'パ':'ア','ピ':'イ','プ':'ウ','ペ':'イ','ポ':'ウ',
+        'ャ':'ア','ュ':'ウ','ョ':'ウ',
+    }
+    normalized = ''
+    prev = ''
+    for c in reading_katakana:
+        if c == 'ー':
+            normalized += long_vowel_map.get(prev, c)
+        else:
+            normalized += c
+            prev = c
+    return normalized
+
+# expose to JS
+window.katakana_to_hiragana = katakana_to_hiragana
+window.normalize_long_vowels = normalize_long_vowels
+  </py-script>
+
+  <!-- App logic (JS) -->
+  <script src="app.js" defer></script>
+</body>
+</html>
+
+
+
+/* FILE: style.css */
+body, html { height: 100%; margin: 0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", "游ゴシック", "Yu Gothic", sans-serif; }
+.screen { position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; background:#fff; }
+#bgimg { width:100%; height:100%; object-fit:cover; filter:brightness(0.9); }
+#mask { position:absolute; inset:0; background: radial-gradient(circle at center, transparent 18%, rgba(222,237,237,1) 19%); transition: opacity .8s; }
+.hidden { display:none; }
+#app { display:flex; flex-direction:column; height:100vh; background:#e1ebe1; }
+header { display:flex; justify-content:space-between; align-items:center; padding:12px; }
+#status { font-size:18px; color:#72d479 }
+#controls select, #controls button { font-size:18px; padding:8px 12px; margin-left:8px; }
+main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px }
+.bigtext { font-size:64px; text-align:center; line-height:1.2; color:#000; }
+.smalltext { font-size:28px; color:#333; margin-top:18px; text-align:center }
+footer { display:flex; gap:12px; padding:12px; justify-content:center }
+button { font-size:20px; padding:10px 18px }
+
+
+
+// FILE: app.js
+// App script: integrates Web Speech API + kuromoji + PyScript helpers
+
+let builder;
+let tokenizer;
+let recognition;
+let listening = false;
+let translateMode = false;
+
+const LANGUAGES = {
+  "en": "English",
+  "zh-CN": "中文",
+  "ko": "한국어",
+  "vi": "Tiếng Việt",
+  "fil": "Filipino",
+  "id": "Bahasa Indonesia",
+  "pt": "Português",
+  "ne": "नेपाली",
+  "my": "Burmese"
+};
+
+window.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('start-btn').addEventListener('click', startListening);
+  document.getElementById('stop-btn').addEventListener('click', stopListening);
+  document.getElementById('translate-toggle').addEventListener('click', toggleTranslate);
+
+  // populate languages
+  const sel = document.getElementById('lang-select');
+  for (const code in LANGUAGES) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = LANGUAGES[code];
+    sel.appendChild(opt);
+  }
+
+  // splash -> main
+  setTimeout(() => {
+    document.getElementById('wait-screen').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+  }, 1000);
+
+  // build kuromoji tokenizer
+  kuromoji.builder({ dicPath: 'https://unpkg.com/kuromoji@0.1.2/dict/' }).build((err, _builder) => {
+    if (err) { console.error(err); document.getElementById('status').textContent = 'kuromoji load error'; return; }
+    builder = _builder;
+    tokenizer = builder.tokenizer;
+    document.getElementById('status').textContent = 'Ready (kuromoji loaded)';
+  });
+
+  // prepare SpeechRecognition if available
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.lang = 'ja-JP';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (ev) => {
+      const text = ev.results[0][0].transcript;
+      onRecognized(text);
+    }
+    recognition.onerror = (ev) => { console.error('speech error', ev); document.getElementById('status').textContent = 'Speech error'; }
+    recognition.onend = () => { if (listening) recognition.start(); }
+  } else {
+    document.getElementById('status').textContent = 'SpeechRecognition not supported';
+  }
+});
+
+function startListening() {
+  if (!recognition) return alert('SpeechRecognition not supported on this browser');
+  listening = true;
+  recognition.lang = document.getElementById('lang-select').value === 'en' ? 'en-US' : (document.getElementById('lang-select').value || 'ja-JP');
+  recognition.start();
+  document.getElementById('status').textContent = 'Listening...';
+}
+
+function stopListening() {
+  listening = false;
+  if (recognition) recognition.stop();
+  document.getElementById('status').textContent = 'Stopped';
+}
+
+function toggleTranslate() {
+  translateMode = !translateMode;
+  document.getElementById('translate-toggle').textContent = `Translate to Japanese (${translateMode? 'ON':'OFF'})`;
+}
+
+async function onRecognized(text) {
+  console.log('recognized:', text);
+  document.getElementById('status').textContent = 'Recognized';
+
+  // tokenize with kuromoji
+  if (!tokenizer) { document.getElementById('hiragana').textContent = text; return; }
+  const toks = tokenizer.tokenize(text);
+
+  // build display tokens similar to original: reading/hiragana conversion
+  const parts = toks.map(t => {
+    // reading may be undefined; kuromoji uses reading property
+    const surface = t.surface_form || t.surface || '';
+    let reading = t.reading || '';
+    // use PyScript helper to normalize long vowels and convert katakana->hiragana
+    let hira = reading ? await window.normalize_long_vowels(reading) : surface;
+    hira = await window.katakana_to_hiragana(hira);
+    return { surface, pos: t.pos, hira };
+  });
+
+  // Build hiragana line and translation placeholders
+  const hira_line = parts.map(p => p.hira).join(' ');
+  document.getElementById('hiragana').textContent = hira_line;
+
+  // If translate mode and language is not Japanese, perform translation via Google Translate API
+  if (translateMode && document.getElementById('lang-select').value !== 'ja') {
+    try {
+      const src = document.getElementById('lang-select').value || 'en';
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=ja&dt=t&q=${encodeURIComponent(text)}`;
+      const r = await fetch(url);
+      const j = await r.json();
+      const translated = j && j[0] && j[0][0] && j[0][0][0] ? j[0][0][0] : text;
+      document.getElementById('translation').textContent = translated;
+    } catch (e) {
+      console.error(e);
+      document.getElementById('translation').textContent = '';
+    }
+  } else {
+    // normal mode: show small translation line made of bold words -> here we keep simple
+    document.getElementById('translation').textContent = ''; // placeholder
+  }
+}
