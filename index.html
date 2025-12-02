@@ -154,8 +154,10 @@ function initSpeechRecognition() {
 
     recognition.onresult = (event) => {
         let text = event.results[event.results.length - 1][0].transcript;
+        console.log("RESULT:", text);  // ←ログ追加
         handleRecognizedText(text);
     };
+
 
     recognition.onerror = () => {
         recognition.stop();
