@@ -6,26 +6,218 @@
     <title>TalkShow Web App</title>
 
     <!-- PyScript -->
-    <link rel="stylesheet" href="https://pyscript.net/releases/2024.5.1/pyscript.css">
-    <script defer src="https://pyscript.net/releases/2024.5.1/pyscript.js"></script>
+    <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+    <script defer src="https://pyscript.net/latest/pyscript.js"></script>
 
     <!-- kuromoji.js -->
     <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dist/kuromoji.js"></script>
 
-    <!-- App JS -->
-    <script defer src="app.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, "Helvetica Neue", sans-serif;
+            background: #e1ebe1;
+            overflow: hidden;
+        }
 
-    <!-- Style -->
-    <link rel="stylesheet" href="style.css">
+        /* --- WAIT SCREEN --- */
+        #wait-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+        }
+        #wait-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: blur(40px);
+            transition: 1.2s ease;
+        }
+        #wait-screen.revealed #wait-img {
+            filter: blur(0px);
+        }
+
+        /* --- MAIN SCREEN --- */
+        #main-screen {
+            display: none;
+            padding: 20px;
+            text-align: center;
+        }
+        #status {
+            font-size: 26px;
+            color: #5bbf6a;
+            margin-top: 10px;
+        }
+
+        #text-display {
+            margin: 40px auto;
+            width: 90%;
+            font-size: 64px;
+            line-height: 1.3;
+            white-space: pre-wrap;
+        }
+
+        .translation-line {
+            font-size: 28px;
+            color: #333;
+            margin-top: 20px;
+        }
+
+        .btn {
+            font-size: 24px;
+            padding: 12px 24px;
+            margin: 12px;
+            background: white;
+            border-radius: 18px;
+            border: 2px solid #ddd;
+        }
+
+    </style>
 </head>
-
 <body>
-    <h1>TalkShow Web App</h1>
 
-    <div id="output">Loading...</div>
+<!-- ------------------ WAIT SCREEN ------------------ -->
+<div id="wait-screen">
+    <img id="wait-img" src="autumn_01.jpg">
+</div>
 
-    <py-script>
-        print("PyScript is working!")
-    </py-script>
+<!-- ------------------ MAIN SCREEN ------------------ -->
+<div id="main-screen">
+    <div id="status">Loading...</div>
+
+    <div id="text-display"></div>
+    <div id="translation" class="translation-line"></div>
+
+    <button id="toggle-translate" class="btn">Translate to Japanese mode</button>
+    <button id="lang-select" class="btn">Select Your Language</button>
+</div>
+
+<!-- ------------------ PYTHON SECTION ------------------ -->
+<py-script>
+print("PyScript is ready.")
+</py-script>
+
+<!-- ------------------ APP JS ------------------ -->
+<script>
+let translateMode = false;
+let currentLang = "en";
+let tokenizer = null;
+let recognition = null;
+
+//--------------------------------------
+// WAIT SCREEN
+//--------------------------------------
+window.addEventListener("DOMContentLoaded", () => {
+    const wait = document.getElementById("wait-screen");
+    const main = document.getElementById("main-screen");
+
+    const reveal = () => {
+        wait.classList.add("revealed");
+        setTimeout(() => {
+            wait.style.display = "none";
+            main.style.display = "block";
+            initSpeechRecognition();
+        }, 1500);
+    };
+
+    wait.addEventListener("touchstart", reveal, { once: true });
+    window.addEventListener("mousemove", reveal, { once: true });
+
+    initKuromoji();
+});
+
+//--------------------------------------
+// KUROMOJI INITIALIZE
+//--------------------------------------
+function initKuromoji() {
+    kuromoji.builder({ dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/" })
+        .build((err, t) => {
+            if (err) { console.error(err); return; }
+            tokenizer = t;
+        });
+}
+
+//--------------------------------------
+// SPEECH RECOGNITION
+//--------------------------------------
+function initSpeechRecognition() {
+    const SpeechRecognition = window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+
+    recognition.lang = "ja-JP";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+        document.getElementById("status").innerText = "Listening...";
+    };
+
+    recognition.onresult = (event) => {
+        let text = event.results[event.results.length - 1][0].transcript;
+        handleRecognizedText(text);
+    };
+
+    recognition.onerror = () => {
+        recognition.stop();
+        setTimeout(() => recognition.start(), 800);
+    };
+
+    recognition.onend = () => recognition.start();
+
+    recognition.start();
+}
+
+//--------------------------------------
+// TEXT PROCESSING
+//--------------------------------------
+function handleRecognizedText(text) {
+    const display = document.getElementById("text-display");
+    const translation = document.getElementById("translation");
+
+    if (translateMode) {
+        translateToJapanese(text, currentLang).then(jp => {
+            display.innerText = jp;
+            translation.innerText = text;
+        });
+        return;
+    }
+
+    // Japanese mode
+    if (!tokenizer) return;
+    const tokens = tokenizer.tokenize(text);
+    const hira = tokens.map(t => t.reading || t.surface_form).join(" ");
+
+    display.innerText = hira;
+    translation.innerText = "";
+}
+
+//--------------------------------------
+// GOOGLE TRANSLATE (free endpoint)
+//--------------------------------------
+async function translateToJapanese(text, src) {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=ja&dt=t&q=${encodeURIComponent(text)}`;
+    const r = await fetch(url);
+    const j = await r.json();
+    return j[0][0][0];
+}
+
+//--------------------------------------
+// UI BUTTONS
+//--------------------------------------
+document.getElementById("toggle-translate").onclick = () => {
+    translateMode = !translateMode;
+    if (translateMode) {
+        document.getElementById("toggle-translate").style.background = "yellow";
+    } else {
+        document.getElementById("toggle-translate").style.background = "white";
+    }
+};
+
+document.getElementById("lang-select").onclick = () => {
+    const lang = prompt("Enter language code (en, zh-CN, ko, vi, fil, id, pt, ne, my):", currentLang);
+    if (lang) currentLang = lang;
+};
+</script>
+
 </body>
 </html>
