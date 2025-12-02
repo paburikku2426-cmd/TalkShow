@@ -185,7 +185,9 @@ function handleRecognizedText(text) {
     // Japanese mode
     if (!tokenizer) return;
     const tokens = tokenizer.tokenize(text);
-    const hira = tokens.map(t => t.reading || t.surface_form).join(" ");
+    const hira = tokens
+        .map(t => (t.reading ? t.reading : t.surface_form))
+        .join(" ");
 
     display.innerText = hira;
     translation.innerText = "";
