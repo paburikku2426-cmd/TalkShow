@@ -124,7 +124,7 @@ window.addEventListener("DOMContentLoaded", () => {
 // KUROMOJI INITIALIZE
 //--------------------------------------
 function initKuromoji() {
-    kuromoji.builder({ dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/" })
+    kuromoji.builder({ dicPath: "./dict/" })
         .build((err, t) => {
             if (err) { console.error("kuromoji 初期化エラー:", err); return; }
             tokenizer = t;
