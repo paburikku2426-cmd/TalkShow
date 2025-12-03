@@ -1,103 +1,97 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TalkShow Web App</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TalkShow Web App</title>
 
-    <!-- PyScript -->
-    <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
-    <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+<!-- PyScript -->
+<link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+<script defer src="https://pyscript.net/latest/pyscript.js"></script>
 
-    <!-- kuromoji.js -->
-    <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dist/kuromoji.js"></script>
+<!-- kuromoji.js -->
+<script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dist/kuromoji.js"></script>
 
-    <style>
-        body {
-            margin: 0;
-            font-family: -apple-system, "Helvetica Neue", sans-serif;
-            background: #e1ebe1;
-            overflow: hidden;
-        }
+<style>
+body {
+    margin: 0;
+    font-family: -apple-system, "Helvetica Neue", sans-serif;
+    background: #e1ebe1;
+    overflow: hidden;
+}
 
-        /* --- WAIT SCREEN --- */
-        #wait-screen {
-            position: fixed;
-            inset: 0;
-            z-index: 10;
-        }
-        #wait-img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            filter: blur(40px);
-            transition: 1.2s ease;
-        }
-        #wait-screen.revealed #wait-img {
-            filter: blur(0px);
-        }
+/* WAIT SCREEN */
+#wait-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+}
+#wait-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(40px);
+    transition: 1.2s ease;
+}
+#wait-screen.revealed #wait-img {
+    filter: blur(0px);
+}
 
-        /* --- MAIN SCREEN --- */
-        #main-screen {
-            display: none;
-            padding: 20px;
-            text-align: center;
-        }
-        #status {
-            font-size: 26px;
-            color: #5bbf6a;
-            margin-top: 10px;
-        }
-
-        #text-display {
-            margin: 40px auto;
-            width: 90%;
-            font-size: 64px;
-            line-height: 1.3;
-            white-space: pre-wrap;
-        }
-
-        .translation-line {
-            font-size: 28px;
-            color: #333;
-            margin-top: 20px;
-        }
-
-        .btn {
-            font-size: 24px;
-            padding: 12px 24px;
-            margin: 12px;
-            background: white;
-            border-radius: 18px;
-            border: 2px solid #ddd;
-        }
-
-    </style>
+/* MAIN SCREEN */
+#main-screen {
+    display: none;
+    padding: 20px;
+    text-align: center;
+}
+#status {
+    font-size: 26px;
+    color: #5bbf6a;
+    margin-top: 10px;
+}
+#text-display {
+    margin: 40px auto;
+    width: 90%;
+    font-size: 64px;
+    line-height: 1.3;
+    white-space: pre-wrap;
+}
+.translation-line {
+    font-size: 28px;
+    color: #333;
+    margin-top: 20px;
+}
+.btn {
+    font-size: 24px;
+    padding: 12px 24px;
+    margin: 12px;
+    background: white;
+    border-radius: 18px;
+    border: 2px solid #ddd;
+}
+</style>
 </head>
 <body>
 
-<!-- ------------------ WAIT SCREEN ------------------ -->
+<!-- WAIT SCREEN -->
 <div id="wait-screen">
     <img id="wait-img" src="autumn_01.jpg">
 </div>
 
-<!-- ------------------ MAIN SCREEN ------------------ -->
+<!-- MAIN SCREEN -->
 <div id="main-screen">
     <div id="status">Loading...</div>
-
     <div id="text-display"></div>
     <div id="translation" class="translation-line"></div>
-
     <button id="toggle-translate" class="btn">Translate to Japanese mode</button>
     <button id="lang-select" class="btn">Select Your Language</button>
 </div>
 
-<!-- ------------------ PYTHON SECTION ------------------ -->
+<!-- PYTHON SECTION -->
 <py-script>
 print("PyScript is ready.")
 </py-script>
 
-<!-- ------------------ APP JS ------------------ -->
+<!-- APP JS -->
 <script>
 let translateMode = false;
 let currentLang = "en";
@@ -116,7 +110,6 @@ window.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => {
             wait.style.display = "none";
             main.style.display = "block";
-            initSpeechRecognition();
         }, 1500);
     };
 
@@ -132,8 +125,10 @@ window.addEventListener("DOMContentLoaded", () => {
 function initKuromoji() {
     kuromoji.builder({ dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/" })
         .build((err, t) => {
-            if (err) { console.error(err); return; }
+            if (err) { console.error("kuromoji 初期化エラー:", err); return; }
             tokenizer = t;
+            console.log("tokenizer 初期化完了");
+            initSpeechRecognition();
         });
 }
 
@@ -141,29 +136,35 @@ function initKuromoji() {
 // SPEECH RECOGNITION
 //--------------------------------------
 function initSpeechRecognition() {
-    const SpeechRecognition = window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        console.error("ブラウザがSpeechRecognitionに対応していません");
+        return;
+    }
 
+    recognition = new SpeechRecognition();
     recognition.lang = "ja-JP";
     recognition.continuous = true;
     recognition.interimResults = false;
 
     recognition.onstart = () => {
         document.getElementById("status").innerText = "Listening...";
+        console.log("SpeechRecognition 開始");
     };
 
     recognition.onresult = (event) => {
         let text = event.results[event.results.length - 1][0].transcript;
+        console.log("認識結果:", text);
         handleRecognizedText(text);
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (e) => {
+        console.error("認識エラー:", e);
         recognition.stop();
         setTimeout(() => recognition.start(), 800);
     };
 
     recognition.onend = () => recognition.start();
-
     recognition.start();
 }
 
@@ -171,6 +172,8 @@ function initSpeechRecognition() {
 // TEXT PROCESSING
 //--------------------------------------
 function handleRecognizedText(text) {
+    console.log("handleRecognizedText に入った:", text);
+
     const display = document.getElementById("text-display");
     const translation = document.getElementById("translation");
 
@@ -178,14 +181,21 @@ function handleRecognizedText(text) {
         translateToJapanese(text, currentLang).then(jp => {
             display.innerText = jp;
             translation.innerText = text;
+            console.log("翻訳モード表示:", jp, text);
         });
         return;
     }
 
-    // Japanese mode
-    if (!tokenizer) return;
+    if (!tokenizer) {
+        console.log("Tokenizer 未初期化");
+        return;
+    }
+
     const tokens = tokenizer.tokenize(text);
-    const hira = tokens.map(t => t.reading || t.surface_form).join(" ");
+    console.log("トークン:", tokens);
+
+    const hira = tokens.map(t => t.reading || t.surface_form || "").join(" ");
+    console.log("表示用テキスト:", hira);
 
     display.innerText = hira;
     translation.innerText = "";
