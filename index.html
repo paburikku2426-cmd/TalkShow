@@ -118,7 +118,13 @@ window.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("mousemove", reveal, { once: true });
 
     initKuromoji();
-});
+
+    function kataToHira(str) {
+    return str.replace(/[\u30A1-\u30F6]/g, c =>
+        String.fromCharCode(c.charCodeAt(0) - 0x60)
+    );
+
+}
 
 //--------------------------------------
 // KUROMOJI INITIALIZE
@@ -195,7 +201,9 @@ function handleRecognizedText(text) {
     const tokens = tokenizer.tokenize(text);
     console.log("トークン:", tokens);
 
-    const hira = tokens.map(t => t.reading || t.surface_form || "").join(" ");
+    const hira = tokens
+    .map(t => t.reading ? kataToHira(t.reading) : t.surface_form || "")
+    .join(" ");
     console.log("表示用テキスト:", hira);
 
     display.innerText = hira;
