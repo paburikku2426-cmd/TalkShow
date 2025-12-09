@@ -105,6 +105,16 @@
         let tokenizer = null;
         let recognition = null;
 
+        //------------------------------------------------
+        // ★ カタカナ → ひらがな変換関数（あなたが見つけたもの）
+        //------------------------------------------------
+        function kanaToHira(str) {
+            return str.replace(/[\u30a1-\u30f6]/g, function(match) {
+                var chr = match.charCodeAt(0) - 0x60;
+                return String.fromCharCode(chr);
+            });
+        }
+
         //--------------------------------------
         // WAIT SCREEN
         //--------------------------------------
@@ -140,15 +150,6 @@
                     console.log("tokenizer 初期化完了");
                     initSpeechRecognition();
                 });
-        }
-
-        //--------------------------------------
-        // 追加：カタカナ→ひらがな変換
-        //--------------------------------------
-        function kataToHira(str) {
-            return str.replace(/[\u30A1-\u30F6]/g, ch =>
-                String.fromCharCode(ch.charCodeAt(0) - 0x60)
-            );
         }
 
         //--------------------------------------
@@ -214,14 +215,14 @@
             const tokens = tokenizer.tokenize(text);
             console.log("トークン:", tokens);
 
-            // ★ここを「すべてひらがな」に修正
+            //------------------------------------------------
+            // ★ ここでカタカナをひらがなへ完全変換！
+            //------------------------------------------------
             const hira = tokens
-                .map(t =>
-                    kataToHira(t.reading || t.surface_form || "")
-                )
-                .join(" ");
+                .map(t => kanaToHira(t.reading || t.surface_form || ""))
+                .join("");
 
-            console.log("表示用テキスト（ひらがな）:", hira);
+            console.log("表示用テキスト:", hira);
 
             display.innerText = hira;
             translation.innerText = "";
