@@ -10,7 +10,7 @@
     <script defer src="https://pyscript.net/latest/pyscript.js"></script>
 
     <!-- kuromoji.js -->
-    <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dist/kuromoji.js"></script>
+    <script src="./kuromoji.js"></script>
 
     <style>
         body {
@@ -20,12 +20,13 @@
             overflow: hidden;
         }
 
-        /* --- WAIT SCREEN --- */
+        /* WAIT SCREEN */
         #wait-screen {
             position: fixed;
             inset: 0;
             z-index: 10;
         }
+
         #wait-img {
             width: 100%;
             height: 100%;
@@ -33,16 +34,18 @@
             filter: blur(40px);
             transition: 1.2s ease;
         }
+
         #wait-screen.revealed #wait-img {
             filter: blur(0px);
         }
 
-        /* --- MAIN SCREEN --- */
+        /* MAIN SCREEN */
         #main-screen {
             display: none;
             padding: 20px;
             text-align: center;
         }
+
         #status {
             font-size: 26px;
             color: #5bbf6a;
@@ -71,153 +74,174 @@
             border-radius: 18px;
             border: 2px solid #ddd;
         }
-
     </style>
 </head>
 <body>
 
-<!-- ------------------ WAIT SCREEN ------------------ -->
-<div id="wait-screen">
-    <img id="wait-img" src="autumn_01.jpg">
-</div>
+    <!-- WAIT SCREEN -->
+    <div id="wait-screen">
+        <img id="wait-img" src="autumn_01.jpg">
+    </div>
 
-<!-- ------------------ MAIN SCREEN ------------------ -->
-<div id="main-screen">
-    <div id="status">Loading...</div>
+    <!-- MAIN SCREEN -->
+    <div id="main-screen">
+        <div id="status">Loading...</div>
+        <div id="text-display"></div>
+        <div id="translation" class="translation-line"></div>
 
-    <div id="text-display"></div>
-    <div id="translation" class="translation-line"></div>
+        <button id="toggle-translate" class="btn">Translate to Japanese mode</button>
+        <button id="lang-select" class="btn">Select Your Language</button>
+    </div>
 
-    <button id="toggle-translate" class="btn">Translate to Japanese mode</button>
-    <button id="lang-select" class="btn">Select Your Language</button>
-</div>
+    <!-- PYTHON SECTION -->
+    <py-script>
+        print("PyScript is ready.")
+    </py-script>
 
-<!-- ------------------ PYTHON SECTION ------------------ -->
-<!-- <py-script> -->
-<!-- print("PyScript is ready.") -->
-<!-- </py-script> -->
+    <!-- APP JS -->
+    <script>
+        let translateMode = false;
+        let currentLang = "en";
+        let tokenizer = null;
+        let recognition = null;
 
-<!-- ------------------ APP JS ------------------ -->
-<script>
-let translateMode = false;
-let currentLang = "en";
-let tokenizer = null;
-let recognition = null;
+        //--------------------------------------
+        // WAIT SCREEN
+        //--------------------------------------
+        window.addEventListener("DOMContentLoaded", () => {
+            const wait = document.getElementById("wait-screen");
+            const main = document.getElementById("main-screen");
 
-//--------------------------------------
-// WAIT SCREEN
-//--------------------------------------
-window.addEventListener("DOMContentLoaded", () => {
-    const wait = document.getElementById("wait-screen");
-    const main = document.getElementById("main-screen");
+            const reveal = () => {
+                wait.classList.add("revealed");
+                setTimeout(() => {
+                    wait.style.display = "none";
+                    main.style.display = "block";
+                }, 1500);
+            };
 
-    const reveal = () => {
-        wait.classList.add("revealed");
-        setTimeout(() => {
-            wait.style.display = "none";
-            main.style.display = "block";
-            initSpeechRecognition();
-        }, 1500);
-    };
+            wait.addEventListener("touchstart", reveal, { once: true });
+            window.addEventListener("mousemove", reveal, { once: true });
 
-    wait.addEventListener("touchstart", reveal, { once: true });
-    window.addEventListener("mousemove", reveal, { once: true });
-
-    initKuromoji();
-});
-
-//--------------------------------------
-// KUROMOJI INITIALIZE
-//--------------------------------------
-function initKuromoji() {
-    kuromoji.builder({ dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/" })
-        .build((err, t) => {
-            if (err) { console.error(err); return; }
-            tokenizer = t;
+            initKuromoji();
         });
-}
 
-//--------------------------------------
-// SPEECH RECOGNITION
-//--------------------------------------
-function initSpeechRecognition() {
-    const SpeechRecognition = window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
+        //--------------------------------------
+        // KUROMOJI INITIALIZE
+        //--------------------------------------
+        function initKuromoji() {
+            kuromoji.builder({ dicPath: "./dict/" })
+                .build((err, t) => {
+                    if (err) {
+                        console.error("kuromoji 初期化エラー:", err);
+                        return;
+                    }
+                    tokenizer = t;
+                    console.log("tokenizer 初期化完了");
+                    initSpeechRecognition();
+                });
+        }
 
-    recognition.lang = "ja-JP";
-    recognition.continuous = true;
-    recognition.interimResults = false;
+        //--------------------------------------
+        // SPEECH RECOGNITION
+        //--------------------------------------
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    recognition.onstart = () => {
-        document.getElementById("status").innerText = "Listening...";
-    };
+            if (!SpeechRecognition) {
+                console.error("ブラウザがSpeechRecognitionに対応していません");
+                return;
+            }
 
-    recognition.onresult = (event) => {
-        let text = event.results[event.results.length - 1][0].transcript;
-        handleRecognizedText(text);
-    };
+            recognition = new SpeechRecognition();
+            recognition.lang = "ja-JP";
+            recognition.continuous = true;
+            recognition.interimResults = false;
 
-    recognition.onerror = () => {
-        recognition.stop();
-        setTimeout(() => recognition.start(), 800);
-    };
+            recognition.onstart = () => {
+                document.getElementById("status").innerText = "Listening...";
+                console.log("SpeechRecognition 開始");
+            };
 
-    recognition.onend = () => recognition.start();
+            recognition.onresult = (event) => {
+                let text = event.results[event.results.length - 1][0].transcript;
+                console.log("認識結果:", text);
+                handleRecognizedText(text);
+            };
 
-    recognition.start();
-}
+            recognition.onerror = (e) => {
+                console.error("認識エラー:", e);
+                recognition.stop();
+                setTimeout(() => recognition.start(), 800);
+            };
 
-//--------------------------------------
-// TEXT PROCESSING
-//--------------------------------------
-function handleRecognizedText(text) {
-    const display = document.getElementById("text-display");
-    const translation = document.getElementById("translation");
+            recognition.onend = () => recognition.start();
+            recognition.start();
+        }
 
-    if (translateMode) {
-        translateToJapanese(text, currentLang).then(jp => {
-            display.innerText = jp;
-            translation.innerText = text;
-        });
-        return;
-    }
+        //--------------------------------------
+        // TEXT PROCESSING
+        //--------------------------------------
+        function handleRecognizedText(text) {
+            console.log("handleRecognizedText に入った:", text);
 
-    // Japanese mode
-    if (!tokenizer) return;
-    const tokens = tokenizer.tokenize(text);
-    const hira = tokens.map(t => t.reading || t.surface_form).join(" ");
+            const display = document.getElementById("text-display");
+            const translation = document.getElementById("translation");
 
-    display.innerText = hira;
-    translation.innerText = "";
-}
+            if (translateMode) {
+                translateToJapanese(text, currentLang).then(jp => {
+                    display.innerText = jp;
+                    translation.innerText = text;
+                    console.log("翻訳モード表示:", jp, text);
+                });
+                return;
+            }
 
-//--------------------------------------
-// GOOGLE TRANSLATE (free endpoint)
-//--------------------------------------
-async function translateToJapanese(text, src) {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=ja&dt=t&q=${encodeURIComponent(text)}`;
-    const r = await fetch(url);
-    const j = await r.json();
-    return j[0][0][0];
-}
+            if (!tokenizer) {
+                console.log("Tokenizer 未初期化");
+                return;
+            }
 
-//--------------------------------------
-// UI BUTTONS
-//--------------------------------------
-document.getElementById("toggle-translate").onclick = () => {
-    translateMode = !translateMode;
-    if (translateMode) {
-        document.getElementById("toggle-translate").style.background = "yellow";
-    } else {
-        document.getElementById("toggle-translate").style.background = "white";
-    }
-};
+            const tokens = tokenizer.tokenize(text);
+            console.log("トークン:", tokens);
 
-document.getElementById("lang-select").onclick = () => {
-    const lang = prompt("Enter language code (en, zh-CN, ko, vi, fil, id, pt, ne, my):", currentLang);
-    if (lang) currentLang = lang;
-};
-</script>
+            const hira = tokens
+                .map(t => t.reading || t.surface_form || "")
+                .join(" ");
+
+            console.log("表示用テキスト:", hira);
+
+            display.innerText = hira;
+            translation.innerText = "";
+        }
+
+        //--------------------------------------
+        // GOOGLE TRANSLATE (free endpoint)
+        //--------------------------------------
+        async function translateToJapanese(text, src) {
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=ja&dt=t&q=${encodeURIComponent(text)}`;
+            const r = await fetch(url);
+            const j = await r.json();
+            return j[0][0][0];
+        }
+
+        //--------------------------------------
+        // UI BUTTONS
+        //--------------------------------------
+        document.getElementById("toggle-translate").onclick = () => {
+            translateMode = !translateMode;
+            document.getElementById("toggle-translate").style.background =
+                translateMode ? "yellow" : "white";
+        };
+
+        document.getElementById("lang-select").onclick = () => {
+            const lang = prompt(
+                "Enter language code (en, zh-CN, ko, vi, fil, id, pt, ne, my):",
+                currentLang
+            );
+            if (lang) currentLang = lang;
+        };
+    </script>
 
 </body>
 </html>
