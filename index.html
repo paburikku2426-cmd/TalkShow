@@ -143,6 +143,15 @@
         }
 
         //--------------------------------------
+        // 追加：カタカナ→ひらがな変換
+        //--------------------------------------
+        function kataToHira(str) {
+            return str.replace(/[\u30A1-\u30F6]/g, ch =>
+                String.fromCharCode(ch.charCodeAt(0) - 0x60)
+            );
+        }
+
+        //--------------------------------------
         // SPEECH RECOGNITION
         //--------------------------------------
         function initSpeechRecognition() {
@@ -205,11 +214,14 @@
             const tokens = tokenizer.tokenize(text);
             console.log("トークン:", tokens);
 
+            // ★ここを「すべてひらがな」に修正
             const hira = tokens
-                .map(t => t.reading || t.surface_form || "")
+                .map(t =>
+                    kataToHira(t.reading || t.surface_form || "")
+                )
                 .join(" ");
 
-            console.log("表示用テキスト:", hira);
+            console.log("表示用テキスト（ひらがな）:", hira);
 
             display.innerText = hira;
             translation.innerText = "";
