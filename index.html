@@ -130,7 +130,7 @@
         // KUROMOJI INITIALIZE
         //--------------------------------------
         function initKuromoji() {
-            kuromoji.builder({ dicPath: "./dict/" })
+            kuromoji.builder({ dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/" })
                 .build((err, t) => {
                     if (err) {
                         console.error("kuromoji 初期化エラー:", err);
