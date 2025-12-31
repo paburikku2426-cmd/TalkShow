@@ -1,97 +1,106 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TalkShow Web App</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TalkShow Web App</title>
 
-    <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
-    <script defer src="https://pyscript.net/latest/pyscript.js"></script>
-    <script src="./kuromoji.js"></script>
+<link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+<script defer src="https://pyscript.net/latest/pyscript.js"></script>
+<script src="./kuromoji.js"></script>
 
-    <style>
-        body {
-            margin: 0;
-            font-family: -apple-system, "Helvetica Neue", sans-serif;
-            background: #e1ebe1;
-            overflow: hidden;
-        }
+<style>
+body {
+    margin: 0;
+    font-family: "筑紫A丸ゴシック", -apple-system, "Helvetica Neue", sans-serif;
+    background: #e1ebe1;
+    overflow: hidden;
+}
 
-        #wait-screen {
-            position: fixed;
-            inset: 0;
-            z-index: 10;
-        }
+.btn {
+    font-family: -apple-system, "Helvetica Neue", sans-serif;
+}
 
-        #wait-img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            filter: blur(40px);
-            transition: 1.2s ease;
-        }
+#wait-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+}
 
-        #wait-screen.revealed #wait-img {
-            filter: blur(0px);
-        }
+#wait-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(40px);
+    transition: 1.2s ease;
+}
 
-        #main-screen {
-            display: none;
-            padding: 20px;
-            text-align: center;
-        }
+#wait-screen.revealed #wait-img {
+    filter: blur(0px);
+}
 
-        #status {
-            font-size: 26px;
-            color: #5bbf6a;
-            margin-top: 10px;
-        }
+#main-screen {
+    display: none;
+    padding: 20px;
+    text-align: center;
+}
 
-        #text-display {
-            margin: 40px auto;
-            width: 90%;
-            font-size: 64px;
-            line-height: 1.3;
-            white-space: pre-wrap;
-        }
+#status {
+    font-size: 26px;
+    color: #5bbf6a;
+    margin-top: 10px;
+}
 
-        .translation-line {
-            font-size: 28px;
-            color: #333;
-            margin-top: 20px;
-        }
+#text-display {
+    margin: 40px auto;
+    width: 90%;
+    font-size: 64px;
+    line-height: 1.3;
+    white-space: pre-wrap;
+}
 
-        .btn {
-            font-size: 24px;
-            padding: 12px 24px;
-            background: white;
-            border-radius: 18px;
-            border: 2px solid #ddd;
-        }
+.translation-line {
+    font-size: 28px;
+    color: #333;
+    margin-top: 20px;
+}
 
-        #lang-select {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-        }
+.word {
+    display: inline-block;
+    margin: 0 6px;
+    text-align: center;
+}
 
-        #toggle-translate {
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
+.word-translation {
+    font-size: 18px;
+    color: #666;
+    margin-top: 4px;
+}
 
-        #lang-dropdown {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            font-size: 20px;
-            padding: 8px;
-            display: none;
-        }
-    </style>
+#lang-select {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+}
+
+#toggle-translate {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+#lang-dropdown {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    font-size: 20px;
+    padding: 8px;
+    display: none;
+}
+</style>
 </head>
+
 <body>
 
 <div id="wait-screen">
@@ -183,44 +192,42 @@ function initSpeechRecognition() {
     recognition.start();
 }
 
-function handleRecognizedText(text) {
+async function translateWord(word) {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=${currentLang}&dt=t&q=${encodeURIComponent(word)}`;
+    const r = await fetch(url);
+    const j = await r.json();
+    return j[0][0][0];
+}
+
+async function handleRecognizedText(text) {
     const display = document.getElementById("text-display");
-    const translation = document.getElementById("translation");
+    display.innerHTML = "";
 
-    if (translateMode) {
-        translateToJapanese(text, currentLang).then(jp => {
-
-            if (tokenizer) {
-                const tokens = tokenizer.tokenize(jp);
-                const hiraJp = tokens
-                    .map(t => t.reading ? kanaToHira(t.reading) : "")
-                    .join("");
-                display.innerText = hiraJp;
-            } else {
-                display.innerText = jp;
-            }
-
-            translation.innerText = text;
-        });
-        return;
-    }
+    document.body.style.background = translateMode ? "" : "#e1ebe1";
 
     if (!tokenizer) return;
 
     const tokens = tokenizer.tokenize(text);
-    const hira = tokens
-        .map(t => kanaToHira(t.reading || t.surface_form || ""))
-        .join("");
 
-    display.innerText = hira;
-    translation.innerText = "";
-}
+    for (const t of tokens) {
+        if (!t.reading) continue;
 
-async function translateToJapanese(text, src) {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=ja&dt=t&q=${encodeURIComponent(text)}`;
-    const r = await fetch(url);
-    const j = await r.json();
-    return j[0][0][0];
+        const hira = kanaToHira(t.reading);
+        const isTarget = ["名詞", "動詞", "形容詞"].includes(t.pos);
+
+        const span = document.createElement("span");
+        span.className = "word";
+        span.innerHTML = isTarget ? `<strong>${hira}</strong>` : hira;
+
+        if (isTarget) {
+            const tr = document.createElement("div");
+            tr.className = "word-translation";
+            tr.innerText = await translateWord(t.surface_form);
+            span.appendChild(tr);
+        }
+
+        display.appendChild(span);
+    }
 }
 
 document.getElementById("toggle-translate").onclick = () => {
