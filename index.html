@@ -12,11 +12,16 @@
     <style>
         body {
             margin: 0;
-            /* ① 筑紫A丸ゴシックを優先指定。環境により名前が異なるため複数記述 */
-            font-family: "TsukuARoundGothic-Regular", "TsukuARdGothic-Regular", "筑紫A丸ゴシック", "Zen Maru Gothic", sans-serif;
+            /* ③ 基本は筑紫A丸ゴシック */
+            font-family: "TsukuARoundGothic-Regular", "TsukuARdGothic-Regular", "Yu Gothic", sans-serif;
             background: #e1ebe1;
             overflow: hidden;
             transition: background 0.3s ease;
+        }
+
+        /* ① 日本語会話モード時の游ゴシック適用用クラス */
+        body.jp-conv-mode {
+            font-family: "Yu Gothic", "YuGothic", sans-serif;
         }
 
         #wait-screen {
@@ -58,7 +63,7 @@
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            gap: 10px 20px;
+            gap: 10px 25px; /* ② 区切りを少し広めに設定 */
         }
 
         .word-container {
@@ -86,7 +91,6 @@
             margin-top: 20px;
         }
 
-        /* ボタンデザインは固定 */
         .btn {
             font-family: -apple-system, "Helvetica Neue", sans-serif;
             font-size: 24px;
@@ -169,7 +173,7 @@ window.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => {
             wait.style.display = "none";
             main.style.display = "block";
-            updateBackgroundColor();
+            updateModeSettings();
         }, 1500);
     };
 
@@ -209,58 +213,47 @@ function initSpeechRecognition() {
     recognition.start();
 }
 
-// ② 言葉の区切りを長くするロジック（自立語に付属語を連結）
-function segmentText(tokens) {
-    const segments = [];
-    for (const t of tokens) {
-        const hira = kanaToHira(t.reading || t.surface_form);
-        // 自立語（名詞、動詞、形容詞、感動詞など）か、前のセグメントがない場合
-        if (["名詞", "動詞", "形容詞", "感動詞"].includes(t.pos) || segments.length === 0) {
-            segments.push({
-                surface: t.surface_form,
-                reading: hira,
-                pos: t.pos,
-                isTarget: ["名詞", "動詞", "形容詞"].includes(t.pos)
-            });
-        } else {
-            // 助詞、助動詞などは前のセグメントにくっつける
-            const last = segments[segments.length - 1];
-            last.surface += t.surface_form;
-            last.reading += hira;
-        }
-    }
-    return segments;
-}
-
 async function handleRecognizedText(text) {
     const display = document.getElementById("text-display");
     const translationArea = document.getElementById("translation");
 
     if (translateMode) {
         const jp = await translateToAny(text, currentLang, 'ja');
-        if (tokenizer) {
-            const tokens = tokenizer.tokenize(jp);
-            display.innerText = tokens.map(t => kanaToHira(t.reading)).join("");
-        } else {
-            display.innerText = jp;
-        }
+        display.innerText = tokenizer ? tokenizer.tokenize(jp).map(t => kanaToHira(t.reading)).join("") : jp;
         translationArea.innerText = text;
     } else {
         if (!tokenizer) return;
         const rawTokens = tokenizer.tokenize(text);
-        const segments = segmentText(rawTokens);
-        display.innerHTML = ""; 
+        
+        // ② 言葉の区切りを長くするロジック（文節に近い形に結合）
+        const bunsetsu = [];
+        for (let i = 0; i < rawTokens.length; i++) {
+            let token = rawTokens[i];
+            let surface = token.surface_form;
+            let reading = kanaToHira(token.reading || surface);
+            let pos = token.pos;
 
-        for (const s of segments) {
+            // 助詞、助動詞、または特定の接尾辞を前の単語に結合する
+            if (i > 0 && (pos === "助詞" || pos === "助動詞" || token.pos_detail_1 === "接尾")) {
+                bunsetsu[bunsetsu.length - 1].surface += surface;
+                bunsetsu[bunsetsu.length - 1].reading += reading;
+            } else {
+                bunsetsu.push({ surface, reading, pos });
+            }
+        }
+
+        display.innerHTML = ""; 
+        for (const b of bunsetsu) {
             const container = document.createElement("div");
             container.className = "word-container";
 
             const hiraSpan = document.createElement("span");
-            hiraSpan.innerText = s.reading;
+            hiraSpan.innerText = b.reading;
 
-            if (s.isTarget) {
+            // 名詞、動詞、形容詞が含まれる塊を太字にする
+            if (["名詞", "動詞", "形容詞"].includes(b.pos)) {
                 hiraSpan.classList.add("highlight");
-                const wordTrans = await translateToAny(s.surface, 'ja', currentLang);
+                const wordTrans = await translateToAny(b.surface, 'ja', currentLang);
                 const transDiv = document.createElement("div");
                 transDiv.className = "word-translation";
                 transDiv.innerText = wordTrans;
@@ -281,34 +274,30 @@ async function translateToAny(text, src, target) {
         const r = await fetch(url);
         const j = await r.json();
         return j[0][0][0];
-    } catch (e) {
-        return "";
-    }
+    } catch (e) { return ""; }
 }
 
-function updateBackgroundColor() {
-    document.body.style.background = translateMode ? "#ffffff" : "#e1ebe1";
+// ①④ モードに応じたフォントと背景色の切り替え
+function updateModeSettings() {
+    if (translateMode) {
+        document.body.classList.remove("jp-conv-mode");
+        document.body.style.background = "#ffffff";
+    } else {
+        document.body.classList.add("jp-conv-mode");
+        document.body.style.background = "#e1ebe1";
+    }
 }
 
 document.getElementById("toggle-translate").onclick = () => {
     translateMode = !translateMode;
-    document.getElementById("toggle-translate").style.background =
-        translateMode ? "yellow" : "white";
-    updateBackgroundColor();
+    document.getElementById("toggle-translate").style.background = translateMode ? "yellow" : "white";
+    updateModeSettings();
 };
 
 const langBtn = document.getElementById("lang-select");
 const dropdown = document.getElementById("lang-dropdown");
-
-langBtn.onclick = () => {
-    dropdown.style.display =
-        dropdown.style.display === "block" ? "none" : "block";
-};
-
-dropdown.onchange = () => {
-    currentLang = dropdown.value;
-    dropdown.style.display = "none";
-};
+langBtn.onclick = () => { dropdown.style.display = dropdown.style.display === "block" ? "none" : "block"; };
+dropdown.onchange = () => { currentLang = dropdown.value; dropdown.style.display = "none"; };
 </script>
 
 </body>
