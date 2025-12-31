@@ -69,10 +69,37 @@
         .btn {
             font-size: 24px;
             padding: 12px 24px;
-            margin: 12px;
             background: white;
             border-radius: 18px;
             border: 2px solid #ddd;
+        }
+
+        /* ① Select Your Language：右上固定 */
+        #lang-select {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 5;
+        }
+
+        /* ② Translate：画面下部中央 */
+        #toggle-translate {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+        }
+
+        /* ③ 言語プルダウン */
+        #lang-dropdown {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            font-size: 20px;
+            padding: 8px;
+            display: none;
+            z-index: 5;
         }
     </style>
 </head>
@@ -91,6 +118,19 @@
 
         <button id="toggle-translate" class="btn">Translate to Japanese mode</button>
         <button id="lang-select" class="btn">Select Your Language</button>
+
+        <!-- ③ プルダウン言語選択 -->
+        <select id="lang-dropdown">
+            <option value="en">English</option>
+            <option value="zh-CN">中文（简体中文）</option>
+            <option value="ko">한국어</option>
+            <option value="vi">Tiếng Việt</option>
+            <option value="fil">Filipino</option>
+            <option value="id">Bahasa Indonesia</option>
+            <option value="pt">Português</option>
+            <option value="ne">नेपाली</option>
+            <option value="my">မြန်မာဘာသာ</option>
+        </select>
     </div>
 
     <!-- PYTHON SECTION -->
@@ -105,9 +145,6 @@
         let tokenizer = null;
         let recognition = null;
 
-        //------------------------------------------------
-        // ★ カタカナ → ひらがな変換関数（あなたが見つけたもの）
-        //------------------------------------------------
         function kanaToHira(str) {
             return str.replace(/[\u30a1-\u30f6]/g, function(match) {
                 var chr = match.charCodeAt(0) - 0x60;
@@ -115,9 +152,6 @@
             });
         }
 
-        //--------------------------------------
-        // WAIT SCREEN
-        //--------------------------------------
         window.addEventListener("DOMContentLoaded", () => {
             const wait = document.getElementById("wait-screen");
             const main = document.getElementById("main-screen");
@@ -136,32 +170,18 @@
             initKuromoji();
         });
 
-        //--------------------------------------
-        // KUROMOJI INITIALIZE
-        //--------------------------------------
         function initKuromoji() {
             kuromoji.builder({ dicPath: "./dict/" })
                 .build((err, t) => {
-                    if (err) {
-                        console.error("kuromoji 初期化エラー:", err);
-                        return;
-                    }
+                    if (err) return;
                     tokenizer = t;
-                    console.log("tokenizer 初期化完了");
                     initSpeechRecognition();
                 });
         }
 
-        //--------------------------------------
-        // SPEECH RECOGNITION
-        //--------------------------------------
         function initSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-            if (!SpeechRecognition) {
-                console.error("ブラウザがSpeechRecognitionに対応していません");
-                return;
-            }
+            if (!SpeechRecognition) return;
 
             recognition = new SpeechRecognition();
             recognition.lang = "ja-JP";
@@ -170,17 +190,14 @@
 
             recognition.onstart = () => {
                 document.getElementById("status").innerText = "Listening...";
-                console.log("SpeechRecognition 開始");
             };
 
             recognition.onresult = (event) => {
                 let text = event.results[event.results.length - 1][0].transcript;
-                console.log("認識結果:", text);
                 handleRecognizedText(text);
             };
 
-            recognition.onerror = (e) => {
-                console.error("認識エラー:", e);
+            recognition.onerror = () => {
                 recognition.stop();
                 setTimeout(() => recognition.start(), 800);
             };
@@ -189,12 +206,7 @@
             recognition.start();
         }
 
-        //--------------------------------------
-        // TEXT PROCESSING
-        //--------------------------------------
         function handleRecognizedText(text) {
-            console.log("handleRecognizedText に入った:", text);
-
             const display = document.getElementById("text-display");
             const translation = document.getElementById("translation");
 
@@ -202,35 +214,21 @@
                 translateToJapanese(text, currentLang).then(jp => {
                     display.innerText = jp;
                     translation.innerText = text;
-                    console.log("翻訳モード表示:", jp, text);
                 });
                 return;
             }
 
-            if (!tokenizer) {
-                console.log("Tokenizer 未初期化");
-                return;
-            }
+            if (!tokenizer) return;
 
             const tokens = tokenizer.tokenize(text);
-            console.log("トークン:", tokens);
-
-            //------------------------------------------------
-            // ★ ここでカタカナをひらがなへ完全変換！
-            //------------------------------------------------
             const hira = tokens
                 .map(t => kanaToHira(t.reading || t.surface_form || ""))
                 .join("");
-
-            console.log("表示用テキスト:", hira);
 
             display.innerText = hira;
             translation.innerText = "";
         }
 
-        //--------------------------------------
-        // GOOGLE TRANSLATE (free endpoint)
-        //--------------------------------------
         async function translateToJapanese(text, src) {
             const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=ja&dt=t&q=${encodeURIComponent(text)}`;
             const r = await fetch(url);
@@ -238,21 +236,24 @@
             return j[0][0][0];
         }
 
-        //--------------------------------------
-        // UI BUTTONS
-        //--------------------------------------
         document.getElementById("toggle-translate").onclick = () => {
             translateMode = !translateMode;
             document.getElementById("toggle-translate").style.background =
                 translateMode ? "yellow" : "white";
         };
 
-        document.getElementById("lang-select").onclick = () => {
-            const lang = prompt(
-                "Enter language code (en, zh-CN, ko, vi, fil, id, pt, ne, my):",
-                currentLang
-            );
-            if (lang) currentLang = lang;
+        // ③ プルダウン表示切替
+        const langBtn = document.getElementById("lang-select");
+        const dropdown = document.getElementById("lang-dropdown");
+
+        langBtn.onclick = () => {
+            dropdown.style.display =
+                dropdown.style.display === "block" ? "none" : "block";
+        };
+
+        dropdown.onchange = () => {
+            currentLang = dropdown.value;
+            dropdown.style.display = "none";
         };
     </script>
 
