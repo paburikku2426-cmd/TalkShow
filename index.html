@@ -193,7 +193,7 @@ function handleRecognizedText(text) {
             if (tokenizer) {
                 const tokens = tokenizer.tokenize(jp);
                 const hiraJp = tokens
-                    .map(t => kanaToHira(t.reading || t.surface_form || ""))
+                    .map(t => t.reading ? kanaToHira(t.reading) : "")
                     .join("");
                 display.innerText = hiraJp;
             } else {
