@@ -12,9 +12,11 @@
     <style>
         body {
             margin: 0;
-            font-family: -apple-system, "Helvetica Neue", sans-serif;
+            /* ③ フォントを筑紫A丸ゴシックに指定 */
+            font-family: "TsukuARoundGothic-Regular", "TsukuARdGothic-Regular", "Yu Gothic", sans-serif;
             background: #e1ebe1;
             overflow: hidden;
+            transition: background 0.3s ease;
         }
 
         #wait-screen {
@@ -47,12 +49,39 @@
             margin-top: 10px;
         }
 
+        /* 日本語表示エリアの調整 */
         #text-display {
             margin: 40px auto;
-            width: 90%;
+            width: 95%;
             font-size: 64px;
-            line-height: 1.3;
+            line-height: 1.6;
             white-space: pre-wrap;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px 20px;
+        }
+
+        /* ② 単語と翻訳を垂直に並べるコンテナ */
+        .word-container {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            vertical-align: top;
+        }
+
+        /* ① 名詞・動詞・形容詞の太字設定 */
+        .highlight {
+            font-weight: bold;
+        }
+
+        /* ② 単語翻訳のスタイル */
+        .word-translation {
+            font-size: 18px;
+            color: #666;
+            line-height: 1.2;
+            margin-top: 4px;
+            font-weight: normal;
         }
 
         .translation-line {
@@ -61,12 +90,15 @@
             margin-top: 20px;
         }
 
+        /* ③ ボタンのデザイン（フォントは元を維持） */
         .btn {
+            font-family: -apple-system, "Helvetica Neue", sans-serif;
             font-size: 24px;
             padding: 12px 24px;
             background: white;
             border-radius: 18px;
             border: 2px solid #ddd;
+            cursor: pointer;
         }
 
         #lang-select {
@@ -126,6 +158,7 @@ let tokenizer = null;
 let recognition = null;
 
 function kanaToHira(str) {
+    if (!str) return "";
     return str.replace(/[\u30a1-\u30f6]/g, m =>
         String.fromCharCode(m.charCodeAt(0) - 0x60)
     );
@@ -140,6 +173,7 @@ window.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => {
             wait.style.display = "none";
             main.style.display = "block";
+            updateBackgroundColor();
         }, 1500);
     };
 
@@ -183,50 +217,77 @@ function initSpeechRecognition() {
     recognition.start();
 }
 
-function handleRecognizedText(text) {
+async function handleRecognizedText(text) {
     const display = document.getElementById("text-display");
-    const translation = document.getElementById("translation");
+    const translationArea = document.getElementById("translation");
 
     if (translateMode) {
-        translateToJapanese(text, currentLang).then(jp => {
+        // 翻訳モード
+        const jp = await translateToAny(text, currentLang, 'ja');
+        if (tokenizer) {
+            const tokens = tokenizer.tokenize(jp);
+            display.innerText = tokens.map(t => kanaToHira(t.reading)).join("");
+        } else {
+            display.innerText = jp;
+        }
+        translationArea.innerText = text;
+    } else {
+        // ①② 日本語会話モード
+        if (!tokenizer) return;
+        const tokens = tokenizer.tokenize(text);
+        display.innerHTML = ""; 
 
-            if (tokenizer) {
-                const tokens = tokenizer.tokenize(jp);
-                const hiraJp = tokens
-                    .map(t => t.reading ? kanaToHira(t.reading) : "")
-                    .join("");
-                display.innerText = hiraJp;
+        for (const t of tokens) {
+            const container = document.createElement("div");
+            container.className = "word-container";
+
+            const hiraSpan = document.createElement("span");
+            const hiraText = kanaToHira(t.reading || t.surface_form);
+            hiraSpan.innerText = hiraText;
+
+            // 名詞、動詞、形容詞判定
+            const isTargetPos = ["名詞", "動詞", "形容詞"].includes(t.pos);
+            
+            if (isTargetPos) {
+                hiraSpan.classList.add("highlight"); // ① 太字
+                
+                // ② 単語翻訳の取得と表示
+                const wordTrans = await translateToAny(t.surface_form, 'ja', currentLang);
+                const transDiv = document.createElement("div");
+                transDiv.className = "word-translation";
+                transDiv.innerText = wordTrans;
+                container.appendChild(hiraSpan);
+                container.appendChild(transDiv);
             } else {
-                display.innerText = jp;
+                container.appendChild(hiraSpan);
             }
-
-            translation.innerText = text;
-        });
-        return;
+            display.appendChild(container);
+        }
+        translationArea.innerText = "";
     }
-
-    if (!tokenizer) return;
-
-    const tokens = tokenizer.tokenize(text);
-    const hira = tokens
-        .map(t => kanaToHira(t.reading || t.surface_form || ""))
-        .join("");
-
-    display.innerText = hira;
-    translation.innerText = "";
 }
 
-async function translateToJapanese(text, src) {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=ja&dt=t&q=${encodeURIComponent(text)}`;
-    const r = await fetch(url);
-    const j = await r.json();
-    return j[0][0][0];
+async function translateToAny(text, src, target) {
+    try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=${target}&dt=t&q=${encodeURIComponent(text)}`;
+        const r = await fetch(url);
+        const j = await r.json();
+        return j[0][0][0];
+    } catch (e) {
+        return "";
+    }
+}
+
+// ④ 日本語会話モードの時だけ背景色を#e1ebe1にする
+function updateBackgroundColor() {
+    document.body.style.background = translateMode ? "#ffffff" : "#e1ebe1";
 }
 
 document.getElementById("toggle-translate").onclick = () => {
     translateMode = !translateMode;
     document.getElementById("toggle-translate").style.background =
         translateMode ? "yellow" : "white";
+    updateBackgroundColor();
 };
 
 const langBtn = document.getElementById("lang-select");
