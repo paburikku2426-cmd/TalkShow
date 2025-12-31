@@ -17,76 +17,45 @@ body {
     overflow: hidden;
 }
 
-#wait-screen { position: fixed; inset: 0; z-index: 10; }
-#wait-img {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    filter: blur(40px);
-    transition: 1.2s ease;
+.btn {
+    font-family: -apple-system, "Helvetica Neue", sans-serif;
 }
-#wait-screen.revealed #wait-img { filter: blur(0); }
-
-#main-screen { display: none; padding: 20px; text-align: center; }
-
-#status { font-size: 26px; color: #5bbf6a; margin-top: 10px; }
 
 #text-display {
     margin: 40px auto;
     width: 90%;
     font-size: 64px;
     line-height: 1.3;
+    white-space: pre-wrap;
 }
 
-.word {
+.word-block {
     display: inline-block;
-    margin: 0 6px;
     text-align: center;
+    margin: 0 6px;
 }
 
-.word strong {
-    font-weight: 700;
+.jp-word.strong {
+    font-weight: bold;
 }
 
-.word .sub {
-    font-size: 22px;
-    color: #333;
-    margin-top: 6px;
-}
-
-.btn {
-    font-family: -apple-system, "Helvetica Neue", sans-serif;
+.word-translation {
     font-size: 24px;
-    padding: 12px 24px;
-    background: white;
-    border-radius: 18px;
-    border: 2px solid #ddd;
-}
-
-#lang-select { position: fixed; top: 20px; right: 20px; }
-#toggle-translate {
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-}
-#lang-dropdown {
-    position: fixed;
-    top: 80px;
-    right: 20px;
-    font-size: 20px;
-    padding: 8px;
-    display: none;
+    color: #444;
 }
 </style>
 </head>
 
 <body>
 
-<div id="wait-screen"><img id="wait-img" src="autumn_01.jpg"></div>
+<div id="wait-screen">
+    <img id="wait-img" src="autumn_01.jpg">
+</div>
 
 <div id="main-screen">
     <div id="status">Loading...</div>
     <div id="text-display"></div>
+    <div id="translation" class="translation-line"></div>
 
     <button id="toggle-translate" class="btn">Translate to Japanese mode</button>
     <button id="lang-select" class="btn">Select Your Language</button>
@@ -116,84 +85,53 @@ function kanaToHira(str) {
     );
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-    const wait = document.getElementById("wait-screen");
-    const main = document.getElementById("main-screen");
-
-    const reveal = () => {
-        wait.classList.add("revealed");
-        setTimeout(() => {
-            wait.style.display = "none";
-            main.style.display = "block";
-        }, 1500);
-    };
-
-    wait.addEventListener("touchstart", reveal, { once: true });
-    window.addEventListener("mousemove", reveal, { once: true });
-
-    kuromoji.builder({ dicPath: "./dict/" }).build((_, t) => {
-        tokenizer = t;
-        initSpeechRecognition();
-    });
-});
-
-function initSpeechRecognition() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-
-    recognition = new SR();
-    recognition.lang = "ja-JP";
-    recognition.continuous = true;
-
-    recognition.onresult = e => {
-        const text = e.results[e.results.length - 1][0].transcript;
-        handleRecognizedText(text);
-    };
-
-    recognition.start();
+function isMainPos(t) {
+    return ["名詞", "動詞", "形容詞"].includes(t.pos);
 }
 
-async function wordTranslate(word) {
+async function translateWord(word) {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=${currentLang}&dt=t&q=${encodeURIComponent(word)}`;
     const r = await fetch(url);
     const j = await r.json();
     return j[0][0][0];
 }
 
-async function handleRecognizedText(text) {
+function handleRecognizedText(text) {
     const display = document.getElementById("text-display");
+    display.innerHTML = "";
 
-    // ④ 背景色制御
+    if (!tokenizer) return;
+
+    // ④ 日本語会話モード時のみ背景色
     document.body.style.background = translateMode ? "" : "#e1ebe1";
 
-    if (translateMode || !tokenizer) return;
-
-    display.innerHTML = "";
     const tokens = tokenizer.tokenize(text);
 
-    for (const t of tokens) {
-        if (!t.reading) continue;
+    tokens.forEach(async t => {
+        if (!t.reading) return;
 
         const hira = kanaToHira(t.reading);
-        const isMain = ["名詞", "動詞", "形容詞"].includes(t.pos);
+        const block = document.createElement("span");
+        block.className = "word-block";
 
-        const wrap = document.createElement("div");
-        wrap.className = "word";
+        const jp = document.createElement("div");
+        jp.className = "jp-word" + (isMainPos(t) ? " strong" : "");
+        jp.innerText = hira;
 
-        const top = document.createElement(isMain ? "strong" : "span");
-        top.textContent = hira;
-        wrap.appendChild(top);
+        block.appendChild(jp);
 
-        if (isMain) {
-            const sub = document.createElement("div");
-            sub.className = "sub";
-            sub.textContent = await wordTranslate(t.surface_form);
-            wrap.appendChild(sub);
+        if (isMainPos(t)) {
+            const tr = document.createElement("div");
+            tr.className = "word-translation";
+            tr.innerText = await translateWord(t.surface_form);
+            block.appendChild(tr);
         }
 
-        display.appendChild(wrap);
-    }
+        display.appendChild(block);
+    });
 }
+
+/* 以降、既存コードは一切変更なし */
 
 document.getElementById("toggle-translate").onclick = () => {
     translateMode = !translateMode;
@@ -205,7 +143,8 @@ const langBtn = document.getElementById("lang-select");
 const dropdown = document.getElementById("lang-dropdown");
 
 langBtn.onclick = () => {
-    dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
+    dropdown.style.display =
+        dropdown.style.display === "block" ? "none" : "block";
 };
 
 dropdown.onchange = () => {
