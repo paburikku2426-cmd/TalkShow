@@ -1,102 +1,97 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TalkShow Web App</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TalkShow Web App</title>
 
-<link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
-<script defer src="https://pyscript.net/latest/pyscript.js"></script>
-<script src="./kuromoji.js"></script>
+    <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+    <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+    <script src="./kuromoji.js"></script>
 
-<style>
-body {
-    margin: 0;
-    font-family: "筑紫A丸ゴシック", -apple-system, sans-serif;
-    overflow: hidden;
-}
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, "Helvetica Neue", sans-serif;
+            background: #e1ebe1;
+            overflow: hidden;
+        }
 
-.btn {
-    font-family: -apple-system, "Helvetica Neue", sans-serif;
-}
+        #wait-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+        }
 
-#wait-screen {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-}
+        #wait-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: blur(40px);
+            transition: 1.2s ease;
+        }
 
-#wait-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    filter: blur(40px);
-    transition: 1.2s ease;
-}
+        #wait-screen.revealed #wait-img {
+            filter: blur(0px);
+        }
 
-#wait-screen.revealed #wait-img {
-    filter: blur(0px);
-}
+        #main-screen {
+            display: none;
+            padding: 20px;
+            text-align: center;
+        }
 
-#main-screen {
-    display: none;
-    padding: 20px;
-    text-align: center;
-}
+        #status {
+            font-size: 26px;
+            color: #5bbf6a;
+            margin-top: 10px;
+        }
 
-#status {
-    font-size: 26px;
-    color: #5bbf6a;
-}
+        #text-display {
+            margin: 40px auto;
+            width: 90%;
+            font-size: 64px;
+            line-height: 1.3;
+            white-space: pre-wrap;
+        }
 
-.word {
-    display: inline-block;
-    margin: 0 6px;
-    text-align: center;
-}
+        .translation-line {
+            font-size: 28px;
+            color: #333;
+            margin-top: 20px;
+        }
 
-.word strong {
-    font-weight: bold;
-    font-size: 64px;
-}
+        .btn {
+            font-size: 24px;
+            padding: 12px 24px;
+            background: white;
+            border-radius: 18px;
+            border: 2px solid #ddd;
+        }
 
-.word .sub {
-    font-size: 20px;
-    color: #444;
-    margin-top: 4px;
-}
+        #lang-select {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+        }
 
-.word.normal {
-    font-size: 64px;
-}
+        #toggle-translate {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
 
-.translation-line {
-    font-size: 28px;
-    margin-top: 20px;
-}
-
-#lang-select {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-}
-
-#toggle-translate {
-    position: fixed;
-    bottom: 80px;
-    left: 50%;
-    transform: translateX(-50%);
-}
-
-#lang-dropdown {
-    position: fixed;
-    top: 80px;
-    right: 20px;
-    display: none;
-}
-</style>
+        #lang-dropdown {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            font-size: 20px;
+            padding: 8px;
+            display: none;
+        }
+    </style>
 </head>
-
 <body>
 
 <div id="wait-screen">
@@ -129,7 +124,6 @@ let translateMode = false;
 let currentLang = "en";
 let tokenizer = null;
 let recognition = null;
-const targetPOS = ["名詞", "動詞", "形容詞"];
 
 function kanaToHira(str) {
     return str.replace(/[\u30a1-\u30f6]/g, m =>
@@ -152,12 +146,16 @@ window.addEventListener("DOMContentLoaded", () => {
     wait.addEventListener("touchstart", reveal, { once: true });
     window.addEventListener("mousemove", reveal, { once: true });
 
+    initKuromoji();
+});
+
+function initKuromoji() {
     kuromoji.builder({ dicPath: "./dict/" }).build((err, t) => {
         if (err) return;
         tokenizer = t;
         initSpeechRecognition();
     });
-});
+}
 
 function initSpeechRecognition() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -167,55 +165,62 @@ function initSpeechRecognition() {
     recognition.lang = "ja-JP";
     recognition.continuous = true;
 
-    recognition.onresult = e => {
-        const text = e.results[e.results.length - 1][0].transcript;
+    recognition.onstart = () => {
+        document.getElementById("status").innerText = "Listening...";
+    };
+
+    recognition.onresult = (e) => {
+        let text = e.results[e.results.length - 1][0].transcript;
         handleRecognizedText(text);
+    };
+
+    recognition.onerror = () => {
+        recognition.stop();
+        setTimeout(() => recognition.start(), 800);
     };
 
     recognition.onend = () => recognition.start();
     recognition.start();
 }
 
-async function translateWord(word) {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=${currentLang}&dt=t&q=${encodeURIComponent(word)}`;
-    const r = await fetch(url);
-    const j = await r.json();
-    return j[0][0][0];
-}
-
-async function handleRecognizedText(text) {
+function handleRecognizedText(text) {
     const display = document.getElementById("text-display");
-    display.innerHTML = "";
+    const translation = document.getElementById("translation");
 
-    document.body.style.background = translateMode ? "#ffffff" : "#e1ebe1";
+    if (translateMode) {
+        translateToJapanese(text, currentLang).then(jp => {
+
+            if (tokenizer) {
+                const tokens = tokenizer.tokenize(jp);
+                const hiraJp = tokens
+                    .map(t => t.reading ? kanaToHira(t.reading) : "")
+                    .join("");
+                display.innerText = hiraJp;
+            } else {
+                display.innerText = jp;
+            }
+
+            translation.innerText = text;
+        });
+        return;
+    }
 
     if (!tokenizer) return;
 
     const tokens = tokenizer.tokenize(text);
+    const hira = tokens
+        .map(t => kanaToHira(t.reading || t.surface_form || ""))
+        .join("");
 
-    for (const t of tokens) {
-        const hira = t.reading ? kanaToHira(t.reading) : "";
-        if (!hira) continue;
+    display.innerText = hira;
+    translation.innerText = "";
+}
 
-        const span = document.createElement("span");
-        span.className = "word";
-
-        if (targetPOS.includes(t.pos)) {
-            const strong = document.createElement("strong");
-            strong.innerText = hira;
-            span.appendChild(strong);
-
-            const sub = document.createElement("div");
-            sub.className = "sub";
-            sub.innerText = await translateWord(t.surface_form);
-            span.appendChild(sub);
-        } else {
-            span.classList.add("normal");
-            span.innerText = hira;
-        }
-
-        display.appendChild(span);
-    }
+async function translateToJapanese(text, src) {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=ja&dt=t&q=${encodeURIComponent(text)}`;
+    const r = await fetch(url);
+    const j = await r.json();
+    return j[0][0][0];
 }
 
 document.getElementById("toggle-translate").onclick = () => {
@@ -224,10 +229,14 @@ document.getElementById("toggle-translate").onclick = () => {
         translateMode ? "yellow" : "white";
 };
 
+const langBtn = document.getElementById("lang-select");
 const dropdown = document.getElementById("lang-dropdown");
-document.getElementById("lang-select").onclick = () => {
-    dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
+
+langBtn.onclick = () => {
+    dropdown.style.display =
+        dropdown.style.display === "block" ? "none" : "block";
 };
+
 dropdown.onchange = () => {
     currentLang = dropdown.value;
     dropdown.style.display = "none";
