@@ -17,52 +17,24 @@ body {
     overflow: hidden;
 }
 
-.btn {
-    font-family: -apple-system, "Helvetica Neue", sans-serif;
-}
-
-#wait-screen {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-}
-
+#wait-screen { position: fixed; inset: 0; z-index: 10; }
 #wait-img {
-    width: 100%;
-    height: 100%;
+    width: 100%; height: 100%;
     object-fit: cover;
     filter: blur(40px);
     transition: 1.2s ease;
 }
+#wait-screen.revealed #wait-img { filter: blur(0); }
 
-#wait-screen.revealed #wait-img {
-    filter: blur(0px);
-}
+#main-screen { display: none; padding: 20px; text-align: center; }
 
-#main-screen {
-    display: none;
-    padding: 20px;
-    text-align: center;
-}
-
-#status {
-    font-size: 26px;
-    color: #5bbf6a;
-    margin-top: 10px;
-}
+#status { font-size: 26px; color: #5bbf6a; margin-top: 10px; }
 
 #text-display {
     margin: 40px auto;
     width: 90%;
     font-size: 64px;
     line-height: 1.3;
-    white-space: pre-wrap;
-}
-
-.translation-line {
-    font-size: 28px;
-    color: #333;
-    margin-top: 20px;
 }
 
 .word {
@@ -71,25 +43,32 @@ body {
     text-align: center;
 }
 
-.word-translation {
-    font-size: 18px;
-    color: #666;
-    margin-top: 4px;
+.word strong {
+    font-weight: 700;
 }
 
-#lang-select {
-    position: fixed;
-    top: 20px;
-    right: 20px;
+.word .sub {
+    font-size: 22px;
+    color: #333;
+    margin-top: 6px;
 }
 
+.btn {
+    font-family: -apple-system, "Helvetica Neue", sans-serif;
+    font-size: 24px;
+    padding: 12px 24px;
+    background: white;
+    border-radius: 18px;
+    border: 2px solid #ddd;
+}
+
+#lang-select { position: fixed; top: 20px; right: 20px; }
 #toggle-translate {
     position: fixed;
     bottom: 100px;
     left: 50%;
     transform: translateX(-50%);
 }
-
 #lang-dropdown {
     position: fixed;
     top: 80px;
@@ -103,14 +82,11 @@ body {
 
 <body>
 
-<div id="wait-screen">
-    <img id="wait-img" src="autumn_01.jpg">
-</div>
+<div id="wait-screen"><img id="wait-img" src="autumn_01.jpg"></div>
 
 <div id="main-screen">
     <div id="status">Loading...</div>
     <div id="text-display"></div>
-    <div id="translation" class="translation-line"></div>
 
     <button id="toggle-translate" class="btn">Translate to Japanese mode</button>
     <button id="lang-select" class="btn">Select Your Language</button>
@@ -155,16 +131,11 @@ window.addEventListener("DOMContentLoaded", () => {
     wait.addEventListener("touchstart", reveal, { once: true });
     window.addEventListener("mousemove", reveal, { once: true });
 
-    initKuromoji();
-});
-
-function initKuromoji() {
-    kuromoji.builder({ dicPath: "./dict/" }).build((err, t) => {
-        if (err) return;
+    kuromoji.builder({ dicPath: "./dict/" }).build((_, t) => {
         tokenizer = t;
         initSpeechRecognition();
     });
-}
+});
 
 function initSpeechRecognition() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -174,25 +145,15 @@ function initSpeechRecognition() {
     recognition.lang = "ja-JP";
     recognition.continuous = true;
 
-    recognition.onstart = () => {
-        document.getElementById("status").innerText = "Listening...";
-    };
-
-    recognition.onresult = (e) => {
-        let text = e.results[e.results.length - 1][0].transcript;
+    recognition.onresult = e => {
+        const text = e.results[e.results.length - 1][0].transcript;
         handleRecognizedText(text);
     };
 
-    recognition.onerror = () => {
-        recognition.stop();
-        setTimeout(() => recognition.start(), 800);
-    };
-
-    recognition.onend = () => recognition.start();
     recognition.start();
 }
 
-async function translateWord(word) {
+async function wordTranslate(word) {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=${currentLang}&dt=t&q=${encodeURIComponent(word)}`;
     const r = await fetch(url);
     const j = await r.json();
@@ -201,32 +162,36 @@ async function translateWord(word) {
 
 async function handleRecognizedText(text) {
     const display = document.getElementById("text-display");
-    display.innerHTML = "";
 
+    // ④ 背景色制御
     document.body.style.background = translateMode ? "" : "#e1ebe1";
 
-    if (!tokenizer) return;
+    if (translateMode || !tokenizer) return;
 
+    display.innerHTML = "";
     const tokens = tokenizer.tokenize(text);
 
     for (const t of tokens) {
         if (!t.reading) continue;
 
         const hira = kanaToHira(t.reading);
-        const isTarget = ["名詞", "動詞", "形容詞"].includes(t.pos);
+        const isMain = ["名詞", "動詞", "形容詞"].includes(t.pos);
 
-        const span = document.createElement("span");
-        span.className = "word";
-        span.innerHTML = isTarget ? `<strong>${hira}</strong>` : hira;
+        const wrap = document.createElement("div");
+        wrap.className = "word";
 
-        if (isTarget) {
-            const tr = document.createElement("div");
-            tr.className = "word-translation";
-            tr.innerText = await translateWord(t.surface_form);
-            span.appendChild(tr);
+        const top = document.createElement(isMain ? "strong" : "span");
+        top.textContent = hira;
+        wrap.appendChild(top);
+
+        if (isMain) {
+            const sub = document.createElement("div");
+            sub.className = "sub";
+            sub.textContent = await wordTranslate(t.surface_form);
+            wrap.appendChild(sub);
         }
 
-        display.appendChild(span);
+        display.appendChild(wrap);
     }
 }
 
@@ -240,8 +205,7 @@ const langBtn = document.getElementById("lang-select");
 const dropdown = document.getElementById("lang-dropdown");
 
 langBtn.onclick = () => {
-    dropdown.style.display =
-        dropdown.style.display === "block" ? "none" : "block";
+    dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
 };
 
 dropdown.onchange = () => {
