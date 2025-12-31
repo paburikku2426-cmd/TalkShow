@@ -12,8 +12,8 @@
     <style>
         body {
             margin: 0;
-            /* ③ フォントを筑紫A丸ゴシックに指定 */
-            font-family: "TsukuARoundGothic-Regular", "TsukuARdGothic-Regular", "Yu Gothic", sans-serif;
+            /* ① 筑紫A丸ゴシックを優先指定。環境により名前が異なるため複数記述 */
+            font-family: "TsukuARoundGothic-Regular", "TsukuARdGothic-Regular", "筑紫A丸ゴシック", "Zen Maru Gothic", sans-serif;
             background: #e1ebe1;
             overflow: hidden;
             transition: background 0.3s ease;
@@ -49,7 +49,6 @@
             margin-top: 10px;
         }
 
-        /* 日本語表示エリアの調整 */
         #text-display {
             margin: 40px auto;
             width: 95%;
@@ -62,7 +61,6 @@
             gap: 10px 20px;
         }
 
-        /* ② 単語と翻訳を垂直に並べるコンテナ */
         .word-container {
             display: inline-flex;
             flex-direction: column;
@@ -70,12 +68,10 @@
             vertical-align: top;
         }
 
-        /* ① 名詞・動詞・形容詞の太字設定 */
         .highlight {
             font-weight: bold;
         }
 
-        /* ② 単語翻訳のスタイル */
         .word-translation {
             font-size: 18px;
             color: #666;
@@ -90,7 +86,7 @@
             margin-top: 20px;
         }
 
-        /* ③ ボタンのデザイン（フォントは元を維持） */
+        /* ボタンデザインは固定 */
         .btn {
             font-family: -apple-system, "Helvetica Neue", sans-serif;
             font-size: 24px;
@@ -199,10 +195,6 @@ function initSpeechRecognition() {
     recognition.lang = "ja-JP";
     recognition.continuous = true;
 
-    recognition.onstart = () => {
-        document.getElementById("status").innerText = "Listening...";
-    };
-
     recognition.onresult = (e) => {
         let text = e.results[e.results.length - 1][0].transcript;
         handleRecognizedText(text);
@@ -217,12 +209,34 @@ function initSpeechRecognition() {
     recognition.start();
 }
 
+// ② 言葉の区切りを長くするロジック（自立語に付属語を連結）
+function segmentText(tokens) {
+    const segments = [];
+    for (const t of tokens) {
+        const hira = kanaToHira(t.reading || t.surface_form);
+        // 自立語（名詞、動詞、形容詞、感動詞など）か、前のセグメントがない場合
+        if (["名詞", "動詞", "形容詞", "感動詞"].includes(t.pos) || segments.length === 0) {
+            segments.push({
+                surface: t.surface_form,
+                reading: hira,
+                pos: t.pos,
+                isTarget: ["名詞", "動詞", "形容詞"].includes(t.pos)
+            });
+        } else {
+            // 助詞、助動詞などは前のセグメントにくっつける
+            const last = segments[segments.length - 1];
+            last.surface += t.surface_form;
+            last.reading += hira;
+        }
+    }
+    return segments;
+}
+
 async function handleRecognizedText(text) {
     const display = document.getElementById("text-display");
     const translationArea = document.getElementById("translation");
 
     if (translateMode) {
-        // 翻訳モード
         const jp = await translateToAny(text, currentLang, 'ja');
         if (tokenizer) {
             const tokens = tokenizer.tokenize(jp);
@@ -232,27 +246,21 @@ async function handleRecognizedText(text) {
         }
         translationArea.innerText = text;
     } else {
-        // ①② 日本語会話モード
         if (!tokenizer) return;
-        const tokens = tokenizer.tokenize(text);
+        const rawTokens = tokenizer.tokenize(text);
+        const segments = segmentText(rawTokens);
         display.innerHTML = ""; 
 
-        for (const t of tokens) {
+        for (const s of segments) {
             const container = document.createElement("div");
             container.className = "word-container";
 
             const hiraSpan = document.createElement("span");
-            const hiraText = kanaToHira(t.reading || t.surface_form);
-            hiraSpan.innerText = hiraText;
+            hiraSpan.innerText = s.reading;
 
-            // 名詞、動詞、形容詞判定
-            const isTargetPos = ["名詞", "動詞", "形容詞"].includes(t.pos);
-            
-            if (isTargetPos) {
-                hiraSpan.classList.add("highlight"); // ① 太字
-                
-                // ② 単語翻訳の取得と表示
-                const wordTrans = await translateToAny(t.surface_form, 'ja', currentLang);
+            if (s.isTarget) {
+                hiraSpan.classList.add("highlight");
+                const wordTrans = await translateToAny(s.surface, 'ja', currentLang);
                 const transDiv = document.createElement("div");
                 transDiv.className = "word-translation";
                 transDiv.innerText = wordTrans;
@@ -278,7 +286,6 @@ async function translateToAny(text, src, target) {
     }
 }
 
-// ④ 日本語会話モードの時だけ背景色を#e1ebe1にする
 function updateBackgroundColor() {
     document.body.style.background = translateMode ? "#ffffff" : "#e1ebe1";
 }
