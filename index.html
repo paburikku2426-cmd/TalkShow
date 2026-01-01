@@ -8,20 +8,24 @@
     <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
     <script defer src="https://pyscript.net/latest/pyscript.js"></script>
     <script src="./kuromoji.js"></script>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
 
     <style>
         body {
             margin: 0;
-            /* ③ 基本は筑紫A丸ゴシック */
+            /* 基本は筑紫A丸ゴシック */
             font-family: "TsukuARoundGothic-Regular", "TsukuARdGothic-Regular", "Yu Gothic", sans-serif;
             background: #e1ebe1;
             overflow: hidden;
             transition: background 0.3s ease;
         }
 
-        /* ① 日本語会話モード時の游ゴシック適用用クラス */
+        /* ① 日本語会話モード時のフォント指定 */
         body.jp-conv-mode {
-            font-family: "Yu Gothic", "YuGothic", sans-serif;
+            font-family: 'Zen Maru Gothic', sans-serif;
         }
 
         #wait-screen {
@@ -63,7 +67,7 @@
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            gap: 10px 25px; /* ② 区切りを少し広めに設定 */
+            gap: 10px 25px;
         }
 
         .word-container {
@@ -74,7 +78,7 @@
         }
 
         .highlight {
-            font-weight: bold;
+            font-weight: 700; /* Zen Maru Gothicの太字 */
         }
 
         .word-translation {
@@ -82,7 +86,7 @@
             color: #666;
             line-height: 1.2;
             margin-top: 4px;
-            font-weight: normal;
+            font-weight: 400;
         }
 
         .translation-line {
@@ -225,7 +229,6 @@ async function handleRecognizedText(text) {
         if (!tokenizer) return;
         const rawTokens = tokenizer.tokenize(text);
         
-        // ② 言葉の区切りを長くするロジック（文節に近い形に結合）
         const bunsetsu = [];
         for (let i = 0; i < rawTokens.length; i++) {
             let token = rawTokens[i];
@@ -233,7 +236,6 @@ async function handleRecognizedText(text) {
             let reading = kanaToHira(token.reading || surface);
             let pos = token.pos;
 
-            // 助詞、助動詞、または特定の接尾辞を前の単語に結合する
             if (i > 0 && (pos === "助詞" || pos === "助動詞" || token.pos_detail_1 === "接尾")) {
                 bunsetsu[bunsetsu.length - 1].surface += surface;
                 bunsetsu[bunsetsu.length - 1].reading += reading;
@@ -250,7 +252,6 @@ async function handleRecognizedText(text) {
             const hiraSpan = document.createElement("span");
             hiraSpan.innerText = b.reading;
 
-            // 名詞、動詞、形容詞が含まれる塊を太字にする
             if (["名詞", "動詞", "形容詞"].includes(b.pos)) {
                 hiraSpan.classList.add("highlight");
                 const wordTrans = await translateToAny(b.surface, 'ja', currentLang);
@@ -277,7 +278,6 @@ async function translateToAny(text, src, target) {
     } catch (e) { return ""; }
 }
 
-// ①④ モードに応じたフォントと背景色の切り替え
 function updateModeSettings() {
     if (translateMode) {
         document.body.classList.remove("jp-conv-mode");
