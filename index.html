@@ -160,6 +160,7 @@ let translateMode = false;
 let currentLang = "en";
 let tokenizer = null;
 let recognition = null;
+let isIntentionalStop = false; // モード切替時の再起動制御用
 
 function kanaToHira(str) {
     if (!str) return "";
@@ -200,7 +201,8 @@ function initSpeechRecognition() {
     if (!SR) return;
 
     recognition = new SR();
-    recognition.lang = "ja-JP";
+    // モードに応じて聴き取る言語を切り替える
+    recognition.lang = translateMode ? currentLang : "ja-JP";
     recognition.continuous = true;
 
     recognition.onresult = (e) => {
@@ -209,12 +211,29 @@ function initSpeechRecognition() {
     };
 
     recognition.onerror = () => {
-        recognition.stop();
-        setTimeout(() => recognition.start(), 800);
+        if (!isIntentionalStop) {
+            recognition.stop();
+            setTimeout(() => recognition.start(), 800);
+        }
     };
 
-    recognition.onend = () => recognition.start();
+    recognition.onend = () => {
+        if (!isIntentionalStop) recognition.start();
+    };
+    
     recognition.start();
+}
+
+// 音声認識を現在の設定で再起動する関数
+function restartRecognition() {
+    if (recognition) {
+        isIntentionalStop = true;
+        recognition.stop();
+        setTimeout(() => {
+            isIntentionalStop = false;
+            initSpeechRecognition();
+        }, 300);
+    }
 }
 
 async function handleRecognizedText(text) {
@@ -222,10 +241,21 @@ async function handleRecognizedText(text) {
     const translationArea = document.getElementById("translation");
 
     if (translateMode) {
+        // 設定言語から日本語へ翻訳
         const jp = await translateToAny(text, currentLang, 'ja');
-        display.innerText = tokenizer ? tokenizer.tokenize(jp).map(t => kanaToHira(t.reading)).join("") : jp;
+        
+        // 翻訳後の日本語をひらがなに変換して表示
+        if (tokenizer) {
+            const tokens = tokenizer.tokenize(jp);
+            const hiraText = tokens.map(t => kanaToHira(t.reading || t.surface_form)).join("");
+            display.innerText = hiraText;
+        } else {
+            display.innerText = jp;
+        }
+        // 直下に元の言語を表示
         translationArea.innerText = text;
     } else {
+        // 通常の日本語会話モード
         if (!tokenizer) return;
         const rawTokens = tokenizer.tokenize(text);
         
@@ -292,12 +322,17 @@ document.getElementById("toggle-translate").onclick = () => {
     translateMode = !translateMode;
     document.getElementById("toggle-translate").style.background = translateMode ? "yellow" : "white";
     updateModeSettings();
+    restartRecognition(); // モード切替時に聞き取り言語を更新
 };
 
 const langBtn = document.getElementById("lang-select");
 const dropdown = document.getElementById("lang-dropdown");
 langBtn.onclick = () => { dropdown.style.display = dropdown.style.display === "block" ? "none" : "block"; };
-dropdown.onchange = () => { currentLang = dropdown.value; dropdown.style.display = "none"; };
+dropdown.onchange = () => { 
+    currentLang = dropdown.value; 
+    dropdown.style.display = "none"; 
+    if (translateMode) restartRecognition(); // 翻訳モード中なら言語変更を即反映
+};
 </script>
 
 </body>
